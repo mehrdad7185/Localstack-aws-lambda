@@ -1,0 +1,100 @@
+۱. ساخت زیرساخت (Bucket)
+fish
+
+# ساخت سطل آپلود تصاویر
+aws s3 mb s3://uploads --endpoint-url=http://localhost:4566
+۲. ساخت لامبدا (با دستور CLI یا همان فایل Zip آماده)
+(فرض بر این است که فایل image_processor/img_payload.zip را قبلاً ساخته‌اید)
+
+
+
+aws lambda create-function \
+    --function-name ImageProcessorFunction \
+    --runtime python3.9 \
+    --role arn:aws:iam::000000000000:role/lambda-exec-role \
+    --handler img_handler.handler \
+    --zip-file fileb://image_processor/img_payload.zip \
+    --endpoint-url=http://localhost:4566
+۳. اتصال منطقی (EventBridge Rule)
+
+
+# ساخت قانون رویداد
+aws events put-rule \
+    --region us-east-1 \
+    --name ImageUploadRule \
+    --event-pattern '{
+        "source": ["aws.s3"],
+        "detail-type": ["Object Created"],
+        "detail": {
+            "bucket": {
+                "name": ["uploads"]
+            }
+        }
+    }' \
+    --endpoint-url=http://localhost:4566
+
+# اتصال قانون به لامبدا
+aws events put-targets \
+    --region us-east-1 \
+    --rule ImageUploadRule \
+    --targets '[
+        {
+            "Id": "1",
+            "Arn": "arn:aws:lambda:us-east-1:000000000000:function:ImageProcessorFunction"
+        }
+    ]' \
+    --endpoint-url=http://localhost:4566
+۴. امنیت و مجوزها
+
+
+# مجوز اجرای لامبدا توسط EventBridge
+aws lambda add-permission \
+    --region us-east-1 \
+    --function-name ImageProcessorFunction \
+    --statement-id s3-image-trigger \
+    --action lambda:InvokeFunction \
+    --principal events.amazonaws.com \
+    --source-arn arn:aws:events:us-east-1:000000000000:rule/ImageUploadRule \
+    --endpoint-url=http://localhost:4566
+۵. تنظیم نهایی S3 (با فیلتر برای جلوگیری از لوپ)
+
+
+
+# تنظیم نوتیفیکیشن با فیلتر پسوند فایل
+aws s3api put-bucket-notification-configuration \
+    --bucket uploads \
+    --notification-configuration '{
+        "LambdaFunctionConfigurations": [
+            {
+                "LambdaFunctionArn": "arn:aws:lambda:us-east-1:000000000000:function:ImageProcessorFunction",
+                "Events": ["s3:ObjectCreated:*"],
+                "Filter": {
+                    "Key": {
+                        "FilterRules": [
+                            {
+                                "Name": "suffix",
+                                "Value": "jpg"
+                            },
+                            {
+                                "Name": "suffix",
+                                "Value": "png"
+                            }
+                        ]
+                    }
+                }
+            }
+        ]
+    }' \
+    --endpoint-url=http://localhost:4566
+۶. تست نهایی
+
+
+# تست با فایل مجاز (باید اجرا شود)
+echo "Test Image" > test.jpg
+aws s3 cp test.jpg s3://uploads/ --endpoint-url=http://localhost:4566
+
+# تست با فایل نامجاز (نباید اجرا شود)
+echo "Test Text" > test.txt
+aws s3 cp test.txt s3://uploads/ --endpoint-url=http://localhost:4566
+
+
