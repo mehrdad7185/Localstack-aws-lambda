@@ -1,0 +1,51 @@
+۱. ساخت SNS Topic
+
+
+aws sns create-topic \
+    --region us-east-1 \
+    --name UserSignupTopic \
+    --endpoint-url=http://localhost:4566
+۲. ساخت SQS Queue
+
+
+aws sqs create-queue \
+    --region us-east-1 \
+    --queue-name UserSignupQueue \
+    --endpoint-url=http://localhost:4566
+۳. اشتراک (Subscribe) SQS به SNS
+
+
+aws sns subscribe \
+    --region us-east-1 \
+    --topic-arn arn:aws:sns:us-east-1:000000000000:UserSignupTopic \
+    --protocol sqs \
+    --notification-endpoint arn:aws:sqs:us-east-1:000000000000:UserSignupQueue \
+    --endpoint-url=http://localhost:4566
+۴. ساخت لامبدا (با Zip)
+
+
+aws lambda create-function \
+    --region us-east-1 \
+    --function-name EmailSenderFunction \
+    --runtime python3.9 \
+    --role arn:aws:iam::000000000000:role/lambda-exec-role \
+    --handler email_handler.handler \
+    --zip-file fileb://sns_sqs_lambda/sns_sqs_payload.zip \
+    --endpoint-url=http://localhost:4566
+۵. اتصال لامبدا به SQS (Event Source Mapping)
+
+
+aws lambda create-event-source-mapping \
+    --region us-east-1 \
+    --function-name EmailSenderFunction \
+    --batch-size 5 \
+    --event-source-arn arn:aws:sqs:us-east-1:000000000000:UserSignupQueue \
+    --endpoint-url=http://localhost:4566
+
+۶. تست نهایی (ارسال پیام)
+
+aws sns publish \
+    --region us-east-1 \
+    --topic-arn arn:aws:sns:us-east-1:000000000000:UserSignupTopic \
+    --message '{"username": "Mehrdad", "email": "mehrdad@example.com"}' \
+    --endpoint-url=http://localhost:4566
