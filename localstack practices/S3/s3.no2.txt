@@ -2,8 +2,9 @@
 fish
 
 # ساخت سطل آپلود تصاویر
-aws s3 mb s3://uploads --endpoint-url=http://localhost:4566
-
+aws s3 mb s3://uploads \
+    --region us-east-1 \
+    --endpoint-url=http://localhost:4566
 
 ۲.   
 aws iam create-role \
