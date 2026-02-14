@@ -3,10 +3,48 @@ fish
 
 # ساخت سطل آپلود تصاویر
 aws s3 mb s3://uploads --endpoint-url=http://localhost:4566
-۲. ساخت لامبدا (با دستور CLI یا همان فایل Zip آماده)
+
+
+۲.   
+aws iam create-role \
+    --role-name lambda-exec-role \
+    --assume-role-policy-document '{
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Action": "sts:AssumeRole",
+          "Principal": {
+            "Service": "lambda.amazonaws.com"
+          },
+          "Effect": "Allow",
+          "Sid": ""
+        }
+      ]
+    }' \
+    --region us-east-1 \
+    --endpoint-url=http://localhost:4566
+
+۳.
+# دادن اجازه S3 و Logs
+aws iam put-role-policy \
+    --role-name lambda-exec-role \
+    --policy-name basic-execution \
+    --policy-document '{
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Action": ["logs:*", "s3:*"],
+          "Resource": "*"
+        }
+      ]
+    }' \
+    --region us-east-1 \
+    --endpoint-url=http://localhost:4566
+
+
+۴. ساخت لامبدا (با دستور CLI یا همان فایل Zip آماده)
 (فرض بر این است که فایل image_processor/img_payload.zip را قبلاً ساخته‌اید)
-
-
 
 aws lambda create-function \
     --function-name ImageProcessorFunction \
@@ -15,9 +53,9 @@ aws lambda create-function \
     --handler img_handler.handler \
     --zip-file fileb://image_processor/img_payload.zip \
     --endpoint-url=http://localhost:4566
-۳. اتصال منطقی (EventBridge Rule)
 
 
+۵. اتصال منطقی (EventBridge Rule)
 # ساخت قانون رویداد
 aws events put-rule \
     --region us-east-1 \
@@ -33,6 +71,7 @@ aws events put-rule \
     }' \
     --endpoint-url=http://localhost:4566
 
+۶.
 # اتصال قانون به لامبدا
 aws events put-targets \
     --region us-east-1 \
@@ -44,9 +83,9 @@ aws events put-targets \
         }
     ]' \
     --endpoint-url=http://localhost:4566
-۴. امنیت و مجوزها
 
 
+۷. امنیت و مجوزها
 # مجوز اجرای لامبدا توسط EventBridge
 aws lambda add-permission \
     --region us-east-1 \
@@ -56,10 +95,9 @@ aws lambda add-permission \
     --principal events.amazonaws.com \
     --source-arn arn:aws:events:us-east-1:000000000000:rule/ImageUploadRule \
     --endpoint-url=http://localhost:4566
-۵. تنظیم نهایی S3 (با فیلتر برای جلوگیری از لوپ)
 
 
-
+۸. تنظیم نهایی S3 (با فیلتر برای جلوگیری از لوپ)
 # تنظیم نوتیفیکیشن با فیلتر پسوند فایل
 aws s3api put-bucket-notification-configuration \
     --bucket uploads \
@@ -86,9 +124,9 @@ aws s3api put-bucket-notification-configuration \
         ]
     }' \
     --endpoint-url=http://localhost:4566
-۶. تست نهایی
 
 
+۹. تست نهایی
 # تست با فایل مجاز (باید اجرا شود)
 echo "Test Image" > test.jpg
 aws s3 cp test.jpg s3://uploads/ --endpoint-url=http://localhost:4566
