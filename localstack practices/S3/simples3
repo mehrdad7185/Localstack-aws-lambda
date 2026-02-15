@@ -1,0 +1,119 @@
+۰. ساخت IAM Role
+
+aws iam create-role \
+    --role-name lambda-exec-role \
+    --assume-role-policy-document '{
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Action": "sts:AssumeRole",
+          "Principal": {
+            "Service": "lambda.amazonaws.com"
+          },
+          "Effect": "Allow",
+          "Sid": ""
+        }
+      ]
+    }' \
+    --region us-east-1 \
+    --endpoint-url=http://localhost:4566
+
+    
+aws iam put-role-policy \
+    --role-name lambda-exec-role \
+    --policy-name basic-access \
+    --policy-document '{
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Action": ["logs:*", "s3:Get*", "s3:List*"],
+          "Resource": "*"
+        }
+      ]
+    }' \
+    --region us-east-1 \
+    --endpoint-url=http://localhost:4566
+
+    
+۱. ساخت سطل S3
+
+aws s3 mb s3://my-simple-bucket \
+    --region us-east-1 \
+    --endpoint-url=http://localhost:4566
+
+    
+۲. ساخت لامبدا
+
+aws lambda create-function \
+    --function-name SimpleS3Reader \
+    --runtime python3.9 \
+    --role arn:aws:iam:us-east-1:000000000000:role:lambda-exec-role \
+    --handler handler.handler \
+    --zip-file fileb://simple_s3/simple_s3_payload.zip \
+    --region us-east-1 \
+    --endpoint-url=http://localhost:4566
+
+
+
+۳. تنظیمات Trigger (بدون فیلتر، اما بدون لوپ)
+چون لامبدا هیچ فایلی تولید نمی‌کند، ما حتی نیازی به فیلتر نداریم. اما برای اطمینان، دستور زیر را می‌زنیم:
+
+# قانون رویداد
+aws events put-rule \
+    --name SimpleS3Rule \
+    --event-pattern '{
+        "source": ["aws.s3"],
+        "detail-type": ["Object Created"],
+        "detail": {
+            "bucket": {
+                "name": ["my-simple-bucket"]
+            }
+        }
+    }' \
+    --region us-east-1 \
+    --endpoint-url=http://localhost:4566
+
+# اتصال به لامبدا
+aws events put-targets \
+    --rule SimpleS3Rule \
+    --targets '[
+        {
+            "Id": "1",
+            "Arn": "arn:aws:lambda:us-east-1:000000000000:function:SimpleS3Reader"
+        }
+    ]' \
+    --region us-east-1 \
+    --endpoint-url=http://localhost:4566
+
+# مجوز
+aws lambda add-permission \
+    --function-name SimpleS3Reader \
+    --statement-id s3-simple-trigger \
+    --action lambda:InvokeFunction \
+    --principal events.amazonaws.com \
+    --source-arn arn:aws:events:us-east-1:000000000000:rule/SimpleS3Rule \
+    --region us-east-1 \
+    --endpoint-url=http://localhost:4566
+
+# فعال‌سازی نوتیفیکیشن
+aws s3api put-bucket-notification-configuration \
+    --bucket my-simple-bucket \
+    --notification-configuration '{
+        "LambdaFunctionConfigurations": [
+            {
+                "LambdaFunctionArn": "arn:aws:lambda:us-east-1:000000000000:function:SimpleS3Reader",
+                "Events": ["s3:ObjectCreated:*"]
+            }
+        ]
+    }' \
+    --region us-east-1 \
+    --endpoint-url=http://localhost:4566
+
+    
+۴. تست نهایی
+
+echo "My Data" > data.txt
+aws s3 cp data.txt s3://my-simple-bucket/ \
+    --region us-east-1 \
+    --endpoint-url=http://localhost:4566
